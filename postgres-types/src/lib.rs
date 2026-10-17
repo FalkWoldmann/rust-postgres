@@ -633,21 +633,23 @@ impl<'a, T: FromSql<'a>, const N: usize> FromSql<'a> for [T; N] {
         }
 
         let mut values = array.values();
-        let out = array_init::try_array_init(|i| {
+        let mut out = Vec::with_capacity(N);
+        for i in 0..N {
             let v = values
                 .next()?
                 .ok_or_else(|| -> Box<dyn Error + Sync + Send> {
                     format!("too few elements in array (expected {N}, got {i})").into()
                 })?;
-            T::from_sql_nullable(member_type, v)
-        })?;
+            out.push(T::from_sql_nullable(member_type, v)?);
+        }
         if values.next()?.is_some() {
             return Err(
                 format!("excess elements in array (expected {N}, got more than that)",).into(),
             );
         }
 
-        Ok(out)
+        out.try_into()
+            .map_err(|out: Vec<T>| format!("expected {N} elements, got {}", out.len()).into())
     }
 
     fn accepts(ty: &Type) -> bool {
